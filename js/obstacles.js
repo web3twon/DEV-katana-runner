@@ -11,6 +11,17 @@ class Obstacle {
             frameCount: 0,
             glowIntensity: 0.5
         };
+        
+        // Candlestick specific properties
+        if (type === 'candlestick_green' || type === 'candlestick_red') {
+            this.originalHeight = height;
+            this.baseHeight = height;
+            this.baseY = y; // Store original Y position for stable expansion
+            this.expansionCycle = Math.random() * Math.PI * 2; // Random starting phase
+            this.expansionRate = 0.015 + Math.random() * 0.005; // Slower expansion/contraction
+            this.maxExpansion = 0.25; // 25% expansion (reduced from 50% for safety)
+            this.isGreen = type === 'candlestick_green';
+        }
     }
     
     update(speed, deltaTime) {
@@ -18,6 +29,33 @@ class Obstacle {
         this.x -= speed * dt;
         this.animation.frameCount += dt;
         this.animation.glowIntensity = 0.5 + Math.sin(this.animation.frameCount * 0.1) * 0.3;
+        
+        // Update candlestick expansion/contraction with stable frame-rate independent animation
+        if (this.type === 'candlestick_green' || this.type === 'candlestick_red') {
+            // Use time-based animation instead of frame-based to prevent glitching
+            this.expansionCycle += this.expansionRate * dt;
+            
+            // Clamp expansion cycle to prevent floating point drift
+            if (this.expansionCycle > Math.PI * 2) {
+                this.expansionCycle -= Math.PI * 2;
+            }
+            
+            const expansionFactor = 1 + (Math.sin(this.expansionCycle) * this.maxExpansion);
+            
+            if (this.isGreen) {
+                // Green candlesticks expand upward - calculate from base position
+                const targetHeight = this.baseHeight * expansionFactor;
+                const heightChange = targetHeight - this.baseHeight;
+                
+                // Set position relative to base to prevent drift
+                this.height = targetHeight;
+                this.y = this.baseY - heightChange;
+            } else {
+                // Red candlesticks expand downward from base position
+                this.height = this.baseHeight * expansionFactor;
+                this.y = this.baseY; // Keep base Y stable
+            }
+        }
     }
     
     render(ctx) {
@@ -32,6 +70,12 @@ class Obstacle {
                 break;
             case 'liquidation_wall':
                 this.renderLiquidationWall(ctx);
+                break;
+            case 'candlestick_green':
+                this.renderCandlestickGreen(ctx);
+                break;
+            case 'candlestick_red':
+                this.renderCandlestickRed(ctx);
                 break;
             default:
                 this.renderDefault(ctx);
@@ -204,6 +248,122 @@ class Obstacle {
         ctx.shadowBlur = 0;
     }
     
+    renderCandlestickGreen(ctx) {
+        // Green candlestick (bull market) - expands upward
+        const baseGradient = ctx.createLinearGradient(this.x, this.y, this.x, this.y + this.height);
+        baseGradient.addColorStop(0, '#10b981');
+        baseGradient.addColorStop(0.2, '#22c55e');
+        baseGradient.addColorStop(0.5, '#16a34a');
+        baseGradient.addColorStop(0.8, '#15803d');
+        baseGradient.addColorStop(1, '#14532d');
+        
+        ctx.fillStyle = baseGradient;
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+        
+        // Add multiple glow layers for depth
+        ctx.shadowColor = '#22c55e';
+        ctx.shadowBlur = 15 * this.animation.glowIntensity;
+        ctx.strokeStyle = `rgba(16, 185, 129, ${this.animation.glowIntensity * 0.8})`;
+        ctx.lineWidth = 3;
+        ctx.strokeRect(this.x, this.y, this.width, this.height);
+        
+        // Inner bright border
+        ctx.shadowBlur = 5;
+        ctx.strokeStyle = `rgba(34, 197, 94, ${this.animation.glowIntensity})`;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(this.x + 1, this.y + 1, this.width - 2, this.height - 2);
+        ctx.shadowBlur = 0;
+        
+        // Animated energy lines running vertically
+        ctx.strokeStyle = `rgba(255, 255, 255, ${0.3 + this.animation.glowIntensity * 0.4})`;
+        ctx.lineWidth = 2;
+        const lineCount = Math.floor(this.width / 8);
+        for (let i = 0; i < lineCount; i++) {
+            const x = this.x + (i + 1) * (this.width / (lineCount + 1));
+            const offsetY = Math.sin(this.animation.frameCount * 0.1 + i) * 10;
+            ctx.beginPath();
+            ctx.moveTo(x, this.y + 10 + offsetY);
+            ctx.lineTo(x, this.y + this.height - 10 + offsetY);
+            ctx.stroke();
+        }
+        
+        // Sparkle effects at expansion edges
+        const expansionLevel = Math.sin(this.expansionCycle) * 0.5 + 0.5;
+        for (let i = 0; i < 8; i++) {
+            const sparkleX = this.x + Math.random() * this.width;
+            const sparkleY = this.y + Math.random() * 20;
+            ctx.fillStyle = `rgba(255, 255, 255, ${expansionLevel * 0.8})`;
+            ctx.fillRect(sparkleX - 1, sparkleY - 1, 2, 2);
+        }
+        
+        // Remove bull/bear text for cleaner look
+        ctx.shadowBlur = 0;
+        
+        // Price ticker animation
+        const tickerY = this.y + 20;
+        ctx.fillStyle = `rgba(16, 185, 129, ${this.animation.glowIntensity})`;
+        ctx.font = '8px monospace';
+        ctx.fillText('↗ +$', this.x + this.width / 2, tickerY);
+    }
+    
+    renderCandlestickRed(ctx) {
+        // Red candlestick (bear market) - expands downward
+        const baseGradient = ctx.createLinearGradient(this.x, this.y, this.x, this.y + this.height);
+        baseGradient.addColorStop(0, '#fca5a5');
+        baseGradient.addColorStop(0.2, '#f87171');
+        baseGradient.addColorStop(0.5, '#ef4444');
+        baseGradient.addColorStop(0.8, '#dc2626');
+        baseGradient.addColorStop(1, '#991b1b');
+        
+        ctx.fillStyle = baseGradient;
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+        
+        // Add multiple glow layers for depth
+        ctx.shadowColor = '#ef4444';
+        ctx.shadowBlur = 15 * this.animation.glowIntensity;
+        ctx.strokeStyle = `rgba(220, 38, 38, ${this.animation.glowIntensity * 0.8})`;
+        ctx.lineWidth = 3;
+        ctx.strokeRect(this.x, this.y, this.width, this.height);
+        
+        // Inner bright border
+        ctx.shadowBlur = 5;
+        ctx.strokeStyle = `rgba(239, 68, 68, ${this.animation.glowIntensity})`;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(this.x + 1, this.y + 1, this.width - 2, this.height - 2);
+        ctx.shadowBlur = 0;
+        
+        // Animated energy lines running vertically (downward flowing)
+        ctx.strokeStyle = `rgba(255, 200, 200, ${0.3 + this.animation.glowIntensity * 0.4})`;
+        ctx.lineWidth = 2;
+        const lineCount = Math.floor(this.width / 8);
+        for (let i = 0; i < lineCount; i++) {
+            const x = this.x + (i + 1) * (this.width / (lineCount + 1));
+            const offsetY = Math.sin(this.animation.frameCount * 0.1 + i + Math.PI) * 10;
+            ctx.beginPath();
+            ctx.moveTo(x, this.y + 10 + offsetY);
+            ctx.lineTo(x, this.y + this.height - 10 + offsetY);
+            ctx.stroke();
+        }
+        
+        // Warning sparkles at expansion edges
+        const expansionLevel = Math.sin(this.expansionCycle) * 0.5 + 0.5;
+        for (let i = 0; i < 8; i++) {
+            const sparkleX = this.x + Math.random() * this.width;
+            const sparkleY = this.y + this.height - Math.random() * 20;
+            ctx.fillStyle = `rgba(255, 150, 150, ${expansionLevel * 0.8})`;
+            ctx.fillRect(sparkleX - 1, sparkleY - 1, 2, 2);
+        }
+        
+        // Remove bull/bear text for cleaner look
+        ctx.shadowBlur = 0;
+        
+        // Price ticker animation
+        const tickerY = this.y + this.height - 20;
+        ctx.fillStyle = `rgba(220, 38, 38, ${this.animation.glowIntensity})`;
+        ctx.font = '8px monospace';
+        ctx.fillText('↘ -$', this.x + this.width / 2, tickerY);
+    }
+    
     renderDefault(ctx) {
         ctx.fillStyle = '#4bbbf0';
         ctx.fillRect(this.x, this.y, this.width, this.height);
@@ -228,20 +388,23 @@ class Obstacle {
 }
 
 class TurtleToken {
-    constructor(x, y) {
+    constructor(x, y, level = 1) {
         this.x = x;
         this.y = y;
         this.baseY = y;
         this.width = 30;
         this.height = 30;
         this.collected = false;
+        this.level = level;
         this.animation = {
             frameCount: 0,
             floatOffset: 0,
             glowIntensity: 0.5,
             rotation: 0
         };
-        this.value = 50 + Math.floor(Math.random() * 100); // 50-150 bonus points
+        
+        // Fixed values: 100 for level 1, 500 for level 2
+        this.value = level === 2 ? 500 : 100;
         
         // Load turtle image
         this.turtleImage = new Image();
@@ -270,8 +433,8 @@ class TurtleToken {
         
         ctx.save();
         
-        // Draw glow effect
-        ctx.shadowColor = '#4bbbf0';
+        // Draw glow effect - gold for level 2, blue for level 1
+        ctx.shadowColor = this.level === 2 ? '#ffd700' : '#4bbbf0';
         ctx.shadowBlur = 15 * this.animation.glowIntensity;
         
         // Rotate around center
@@ -289,8 +452,8 @@ class TurtleToken {
                 this.height
             );
         } else {
-            // Fallback: Draw simple green circle
-            ctx.fillStyle = '#4bbbf0';
+            // Fallback: Draw simple circle - gold for level 2, blue for level 1
+            ctx.fillStyle = this.level === 2 ? '#ffd700' : '#4bbbf0';
             ctx.beginPath();
             ctx.arc(0, 0, this.width / 2, 0, Math.PI * 2);
             ctx.fill();
@@ -320,11 +483,121 @@ class TurtleToken {
     }
 }
 
+class StockCertificate {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.baseY = y;
+        this.width = 35;
+        this.height = 25;
+        this.collected = false;
+        this.animation = {
+            frameCount: 0,
+            floatOffset: 0,
+            glowIntensity: 0.5,
+            rotation: 0,
+            sparkles: []
+        };
+        this.value = 75 + Math.floor(Math.random() * 125); // 75-200 bonus points
+        
+        // Initialize sparkle effects
+        for (let i = 0; i < 6; i++) {
+            this.animation.sparkles.push({
+                x: Math.random() * this.width,
+                y: Math.random() * this.height,
+                phase: Math.random() * Math.PI * 2,
+                speed: 0.05 + Math.random() * 0.03
+            });
+        }
+    }
+    
+    update(speed, deltaTime) {
+        const dt = deltaTime / 16;
+        this.x -= speed * dt;
+        this.animation.frameCount += dt;
+        this.animation.floatOffset = Math.sin(this.animation.frameCount * 0.06) * 12;
+        this.animation.glowIntensity = 0.6 + Math.sin(this.animation.frameCount * 0.1) * 0.4;
+        this.animation.rotation += dt * 0.015;
+        this.y = this.baseY + this.animation.floatOffset;
+        
+        // Update sparkles
+        this.animation.sparkles.forEach(sparkle => {
+            sparkle.phase += sparkle.speed * dt;
+        });
+    }
+    
+    render(ctx) {
+        if (this.collected) return;
+        
+        ctx.save();
+        
+        // Draw glow effect
+        ctx.shadowColor = '#fbbf24';
+        ctx.shadowBlur = 20 * this.animation.glowIntensity;
+        
+        // Rotate around center
+        ctx.translate(this.x + this.width / 2, this.y + this.height / 2);
+        ctx.rotate(this.animation.rotation);
+        
+        // Draw stock certificate background
+        const gradient = ctx.createLinearGradient(-this.width/2, -this.height/2, this.width/2, this.height/2);
+        gradient.addColorStop(0, '#fbbf24');
+        gradient.addColorStop(0.3, '#f59e0b');
+        gradient.addColorStop(0.7, '#d97706');
+        gradient.addColorStop(1, '#92400e');
+        
+        ctx.fillStyle = gradient;
+        ctx.fillRect(-this.width/2, -this.height/2, this.width, this.height);
+        
+        // Draw border
+        ctx.strokeStyle = '#451a03';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(-this.width/2, -this.height/2, this.width, this.height);
+        
+        // Draw inner decorative border
+        ctx.strokeStyle = '#fef3c7';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(-this.width/2 + 2, -this.height/2 + 2, this.width - 4, this.height - 4);
+        
+        // Draw dollar sign
+        ctx.fillStyle = '#1f2937';
+        ctx.font = 'bold 14px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('$', 0, 0);
+        
+        // Draw sparkles
+        this.animation.sparkles.forEach(sparkle => {
+            const sparkleAlpha = (Math.sin(sparkle.phase) + 1) * 0.5;
+            ctx.fillStyle = `rgba(255, 255, 255, ${sparkleAlpha * 0.8})`;
+            const sparkleX = sparkle.x - this.width/2;
+            const sparkleY = sparkle.y - this.height/2;
+            ctx.fillRect(sparkleX - 1, sparkleY - 1, 2, 2);
+        });
+        
+        ctx.restore();
+    }
+    
+    getBounds() {
+        return {
+            x: this.x,
+            y: this.y,
+            width: this.width,
+            height: this.height
+        };
+    }
+    
+    isOffScreen() {
+        return this.x + this.width < 0;
+    }
+}
+
 class ObstacleManager {
     constructor(game) {
         this.game = game;
         this.obstacles = [];
         this.turtleTokens = [];
+        this.stockCertificates = [];
         this.spawnTimer = 0;
         this.bonusSpawnTimer = 0;
         this.spawnDelay = 150; // frames between spawns - consistent with debug defaults
@@ -338,11 +611,17 @@ class ObstacleManager {
         this.obstacleSpacingMultipliers = {
             'pillar': 1.0,
             'defi_node': 1.0,
-            'liquidation_wall': 1.5  // Extra spacing for wide liquidation walls
+            'liquidation_wall': 1.5,  // Extra spacing for wide liquidation walls
+            'candlestick_green': 1.6,  // Moderately increased spacing for expanding candlesticks
+            'candlestick_red': 1.6     // Moderately increased spacing for expanding candlesticks
         };
         this.safeZoneHeight = 80; // Guaranteed passable area height
         
-        this.obstacleTypes = ['pillar', 'defi_node', 'liquidation_wall'];
+        // Level-specific obstacle types
+        this.level1ObstacleTypes = ['pillar', 'defi_node', 'liquidation_wall'];
+        this.level2ObstacleTypes = ['candlestick_green', 'candlestick_red'];
+        this.obstacleTypes = this.level1ObstacleTypes; // Start with level 1
+        this.currentLevel = 1;
         this.difficultyRamp = 0;
         
         // Turtle token frequency control
@@ -353,11 +632,25 @@ class ObstacleManager {
     reset() {
         this.obstacles = [];
         this.turtleTokens = [];
+        this.stockCertificates = [];
         this.spawnTimer = 0;
         this.bonusSpawnTimer = 0;
         this.spawnDelay = 120;
         this.difficultyRamp = 0;
         this.obstacleCount = 0;
+        // Reset to level 1
+        this.currentLevel = 1;
+        this.obstacleTypes = this.level1ObstacleTypes;
+    }
+    
+    setLevel(level) {
+        this.currentLevel = level;
+        if (level === 2) {
+            this.obstacleTypes = this.level2ObstacleTypes;
+            console.log('ObstacleManager switched to Trading Floor obstacles');
+        } else {
+            this.obstacleTypes = this.level1ObstacleTypes;
+        }
     }
     
     update(deltaTime) {
@@ -386,6 +679,16 @@ class ObstacleManager {
             }
         }
         
+        // Update stock certificates
+        for (let i = this.stockCertificates.length - 1; i >= 0; i--) {
+            const certificate = this.stockCertificates[i];
+            certificate.update(this.game.gameSpeed, deltaTime);
+            
+            if (certificate.isOffScreen() || certificate.collected) {
+                this.stockCertificates.splice(i, 1);
+            }
+        }
+        
         // Spawn obstacles
         this.spawnTimer += dt;
         if (this.spawnTimer >= this.spawnDelay) {
@@ -393,7 +696,7 @@ class ObstacleManager {
             this.spawnTimer = 0;
             this.obstacleCount++;
             
-            // Check if we should spawn a turtle token based on obstacle count
+            // Check if we should spawn a collectible based on obstacle count
             if (this.obstacleCount % this.turtleSpawnRate === 0 && this.obstacles.length >= 2) {
                 this.spawnTurtleToken();
             }
@@ -401,11 +704,11 @@ class ObstacleManager {
     }
     
     getCanvasWidth() {
-        return this.game.canvasWidth || this.game.canvas.width;
+        return this.game.canvas.width;
     }
     
     getCanvasHeight() {
-        return this.game.canvasHeight || this.game.canvas.height;
+        return this.game.canvas.height;
     }
     
     spawnObstacle() {
@@ -422,16 +725,21 @@ class ObstacleManager {
         // Calculate safe gap size (ensure it's always navigable)
         const playerHeight = 40; // Player character height
         const safetyMargin = 20; // Extra space for comfortable navigation
-        const minimumSafeGap = playerHeight + safetyMargin * 2; // 80 pixels minimum
+        let minimumSafeGap = playerHeight + safetyMargin * 2; // 80 pixels minimum
+        
+        // For candlestick obstacles, add extra safety margin due to expansion
+        if (obstacleType === 'candlestick_green' || obstacleType === 'candlestick_red') {
+            minimumSafeGap = playerHeight + safetyMargin * 3; // 100 pixels minimum for candlesticks (more challenging)
+        }
         
         // Use the larger of configured gap or minimum safe gap
         const actualMinGap = Math.max(this.minGap, minimumSafeGap);
-        const actualMaxGap = Math.max(this.maxGap, actualMinGap + 60);
+        const actualMaxGap = Math.max(this.maxGap, actualMinGap + 80);
         const gapSize = actualMinGap + Math.random() * (actualMaxGap - actualMinGap);
         
-        // Calculate safe vertical position for the gap
-        const topMargin = 60; // Space from top
-        const bottomMargin = 60; // Space from bottom (ground level)
+        // Calculate safe vertical position for the gap - bars should touch edges
+        const topMargin = 0; // No space from top - bars touch edge
+        const bottomMargin = 0; // No space from bottom - bars touch edge
         const availableHeight = canvasHeight - topMargin - bottomMargin - gapSize;
         
         if (availableHeight <= 0) {
@@ -488,8 +796,8 @@ class ObstacleManager {
     createObstaclePair(canvasWidth, canvasHeight, width, gapTop, gapBottom, type) {
         const obstacles = [];
         
-        // Create top obstacle (if there's room)
-        if (gapTop > 20) {
+        // Create top obstacle extending to very top (always create if gap exists)
+        if (gapTop > 0) {
             obstacles.push(new Obstacle(
                 canvasWidth,
                 0,
@@ -499,10 +807,10 @@ class ObstacleManager {
             ));
         }
         
-        // Create bottom obstacle (if there's room)
+        // Create bottom obstacle extending to very bottom (always create if gap exists)
         const bottomStart = gapBottom;
-        const bottomHeight = canvasHeight - bottomStart - 50; // Leave space for ground
-        if (bottomHeight > 20) {
+        const bottomHeight = canvasHeight - bottomStart; // Extend all the way to bottom
+        if (bottomHeight > 0) {
             obstacles.push(new Obstacle(
                 canvasWidth,
                 bottomStart,
@@ -516,26 +824,22 @@ class ObstacleManager {
     }
     
     spawnSingleObstacle(canvasWidth, canvasHeight, width, type) {
-        // Create a single obstacle with guaranteed gap above or below
+        // Create a single obstacle that extends to edge with guaranteed gap
         const playerHeight = 40;
         const safetyMargin = 30;
-        const minObstacleHeight = 60;
-        const maxObstacleHeight = Math.min(200, canvasHeight / 3);
+        const minGapSize = playerHeight + safetyMargin * 2;
         
-        const obstacleHeight = minObstacleHeight + Math.random() * (maxObstacleHeight - minObstacleHeight);
-        
-        // Randomly place at top or bottom
+        // Randomly place gap at top or bottom
         let obstacle;
         if (Math.random() < 0.5) {
-            // Top obstacle - leave safe space at bottom
-            const maxY = canvasHeight - (playerHeight + safetyMargin * 2) - obstacleHeight;
-            const y = Math.random() * Math.max(0, maxY);
-            obstacle = new Obstacle(canvasWidth, y, width, obstacleHeight, type);
+            // Gap at bottom - obstacle extends from top
+            const obstacleHeight = canvasHeight - minGapSize;
+            obstacle = new Obstacle(canvasWidth, 0, width, obstacleHeight, type);
         } else {
-            // Bottom obstacle - leave safe space at top  
-            const minY = playerHeight + safetyMargin * 2;
-            const y = minY + Math.random() * (canvasHeight - minY - obstacleHeight - 50);
-            obstacle = new Obstacle(canvasWidth, y, width, obstacleHeight, type);
+            // Gap at top - obstacle extends to bottom
+            const gapHeight = minGapSize;
+            const obstacleHeight = canvasHeight - gapHeight;
+            obstacle = new Obstacle(canvasWidth, gapHeight, width, obstacleHeight, type);
         }
         
         if (this.validateObstacles([obstacle])) {
@@ -570,11 +874,22 @@ class ObstacleManager {
         // Find the most recent obstacle pair to place bonus in their gap
         const safePosition = this.findGapForBonus(canvasWidth, canvasHeight);
         if (safePosition) {
-            const token = new TurtleToken(safePosition.x, safePosition.y);
+            const token = new TurtleToken(safePosition.x, safePosition.y, this.currentLevel);
             this.turtleTokens.push(token);
         }
     }
     
+    spawnStockCertificate() {
+        const canvasWidth = this.getCanvasWidth();
+        const canvasHeight = this.getCanvasHeight();
+        
+        // Find the most recent obstacle pair to place bonus in their gap
+        const safePosition = this.findGapForBonus(canvasWidth, canvasHeight);
+        if (safePosition) {
+            const certificate = new StockCertificate(safePosition.x, safePosition.y);
+            this.stockCertificates.push(certificate);
+        }
+    }
     
     findGapForBonus(canvasWidth, canvasHeight) {
         if (this.obstacles.length === 0) return null;
@@ -723,6 +1038,11 @@ class ObstacleManager {
         this.turtleTokens.forEach(token => {
             token.render(ctx);
         });
+        
+        // Render stock certificates
+        this.stockCertificates.forEach(certificate => {
+            certificate.render(ctx);
+        });
     }
     
     renderDebugInfo(ctx) {
@@ -765,6 +1085,20 @@ class ObstacleManager {
                     this.createBonusEffect(token.x + token.width / 2, token.y + token.height / 2, token.value);
                     this.playBonusSound();
                     
+                }
+            }
+        }
+        
+        // Check stock certificate collection
+        for (const certificate of this.stockCertificates) {
+            if (!certificate.collected) {
+                const certificateBounds = certificate.getBounds();
+                
+                if (this.isColliding(playerBounds, certificateBounds)) {
+                    certificate.collected = true;
+                    this.game.updateScore(certificate.value);
+                    this.createBonusEffect(certificate.x + certificate.width / 2, certificate.y + certificate.height / 2, certificate.value);
+                    this.playBonusSound();
                 }
             }
         }

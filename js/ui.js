@@ -237,7 +237,13 @@ class GameUI {
         
         this.notifications.forEach((notification, index) => {
             ctx.globalAlpha = notification.alpha;
-            ctx.fillStyle = notification.type === 'milestone' ? '#f6ff0d' : '#4bbbf0';
+            
+            // Choose color based on notification type
+            let fillStyle = '#4bbbf0';
+            if (notification.type === 'milestone') fillStyle = '#f6ff0d';
+            if (notification.type === 'level-unlock') fillStyle = '#ff6b9d';
+            
+            ctx.fillStyle = fillStyle;
             ctx.font = 'bold 24px monospace';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
@@ -292,6 +298,7 @@ class GameUI {
     renderGameplayUI(ctx) {
         // Additional gameplay UI elements can be added here
         this.renderSpeedIndicator(ctx);
+        this.renderLevelInfo(ctx);
     }
     
     renderSpeedIndicator(ctx) {
@@ -301,11 +308,14 @@ class GameUI {
         
         ctx.save();
         
-        // Speed bar background
+        // Speed bar background - responsive positioning for desktop/mobile
         const barWidth = 100;
         const barHeight = 8;
         const barX = ctx.canvas.width - barWidth - 20;
-        const barY = 80;
+        // Adjust position based on canvas dimensions to work for both desktop and mobile
+        // Force desktop positioning - if canvas is standard desktop size (800x600 or larger)
+        const isDesktop = ctx.canvas.width >= 800 && ctx.canvas.height >= 600;
+        const barY = isDesktop ? 90 : 65; // Good desktop offset with clear gap
         
         ctx.fillStyle = 'rgba(16, 22, 49, 0.8)';
         ctx.fillRect(barX, barY, barWidth, barHeight);
@@ -324,7 +334,39 @@ class GameUI {
         ctx.fillStyle = '#4bbbf0';
         ctx.font = '12px monospace';
         ctx.textAlign = 'right';
-        ctx.fillText('SPEED', barX + barWidth, barY - 5);
+        ctx.fillText('SPEED', barX + barWidth, barY + barHeight + 15);
+        
+        ctx.restore();
+    }
+    
+    renderLevelInfo(ctx) {
+        ctx.save();
+        
+        // Responsive positioning for proper visibility on desktop and mobile
+        // Force desktop positioning - if canvas is standard desktop size (800x600 or larger)
+        const isDesktop = ctx.canvas.width >= 800 && ctx.canvas.height >= 600;
+        const levelY = isDesktop ? 90 : 65; // Good desktop offset with clear gap
+        const unlockY = isDesktop ? 110 : 85;
+        
+        // Current level indicator
+        ctx.fillStyle = '#4bbbf0';
+        ctx.font = 'bold 14px monospace';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        
+        const levelText = this.game.currentLevel === 1 ? 'LEVEL 1: DOJO' : 'LEVEL 2: TRADING FLOOR';
+        ctx.fillText(levelText, 20, levelY);
+        
+        // Show unlock requirement text only if level 1 and not unlocked yet
+        if (this.game.currentLevel === 1 && !this.game.hasReachedLevel2) {
+            const remaining = this.game.levelThreshold - this.game.score;
+            if (remaining > 0) {
+                ctx.fillStyle = '#f6ff0d';
+                ctx.font = '12px monospace';
+                const unlockText = `Reach score ${this.game.levelThreshold} to unlock Trading Floor!`;
+                ctx.fillText(unlockText, 20, unlockY);
+            }
+        }
         
         ctx.restore();
     }
